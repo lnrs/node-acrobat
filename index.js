@@ -49,11 +49,13 @@ function launchAcrobat(args, options, cb){
       console.log('"'+readerPath+'"' + ' ' + args.join(' '));
       console.log(args)
 
-      var process  = child.spawn(readerPath, args, {encoding: 'utf8', detached:true, stdio:'ignore'});
-      process.unref()
-
-      if(cb)
-        cb();
+      try {
+        var process  = child.spawn(readerPath, args, {detached:false});
+        process.on('error', function(err) {console.log(err); cb(err)});
+        process.on('exit', function(code, signal){ process.unref(); console.log(`Acrobat exited ${code} ${signal}`); cb(); });
+      } catch (err) {
+        return cb(err);
+      }
     })
   }
 }
@@ -152,9 +154,11 @@ function findHighestVersion(folders){
   
   var highest = folders[0];
   var v = getVersion(highest);
+  console.log(`Found version ${v} at ${highest}`);
 
   for (var i = 1; i < folders.length; i++) {
-    var otherV = getVersion(folders[i])
+    var otherV = getVersion(folders[i]);
+    console.log(`Found version ${otherV} at ${folders[i]}`);
     if(otherV > v){
       highest = folders[i];
       v = otherV;
@@ -167,7 +171,7 @@ function findHighestVersion(folders){
 function getVersion(name){
   var hi = name.match(/Reader\s+(\d+\.{0,}\d*).*/);
   if (!hi && name.toLowerCase().includes("reader dc")) {
-    hi = "12";
+    return 12;
   }
 
   return parseFloat(hi[1]);
@@ -176,28 +180,19 @@ function getVersion(name){
 function findReaderFolders(cb){
   var programsBasePath = process.env['ProgramFiles(x86)'] || process.env['ProgramFiles'];
   var adobeBasePath = path.join(programsBasePath, 'Adobe');
-  console.log(`Adobe Base Path: ${adobeBasePath}`)
+  console.log(`Adobe Base Path: ${adobeBasePath}`);
 
   fs.access(adobeBasePath, function(err){
     if(err)
       return cb(err);
 
-    fs.readdir( adobeBasePath, function(err,files){
+    fs.readdir(adobeBasePath, function(err,files){
       if(err)
         return cb(err);
       
       var folders = filterReaderFolders(files);
       for (var i = 0; i < folders.length; i++) {
         folders[i] = path.join(adobeBasePath, folders[i]);
-
-        fs.readdir(folders[i], function(innerError, innerFiles) {
-          if (!innerError) {
-            var innerFolders = filterReaderFolders(innerFiles);
-            for (var j = 0; j < innerFolders.length; j++) {
-              folders = folders.concat(path.join(folders[i], innerFolders[j]));
-            }
-          }
-        });
       }
 
       cb(null, folders);
